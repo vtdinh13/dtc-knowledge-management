@@ -57,3 +57,20 @@ def llm(user_prompt, instructions=None, model="gpt-5.4-mini"):
     )
 
     return response.output_text
+
+
+def print_msg_to_llm(instructions: str, transcript_string: str):
+    messages = []
+
+    if instructions:
+        messages.append({
+            "role": "system",
+            "content": instructions
+        })
+
+    messages.append({
+        "role": "user",
+        "content": transcript_string
+    })
+
+    return print(messages)
