@@ -30,3 +30,10 @@ plotly-cloud.toml
 plotly-cloud.toml.bak
 *.bak
 *.bk
+
+# Environmental variables
+.env
+.envrc
+
+# OS
+.DS_Store
