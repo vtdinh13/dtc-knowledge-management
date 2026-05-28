@@ -1,0 +1,5 @@
+# Requirements to run Dash app
+
+dash
+pandas
+plotly
