@@ -15,7 +15,47 @@ provider "aws" {
 
 resource "aws_s3_bucket" "dtc_ingestion_bucket" {
   bucket = "dtc-ingestion-bucket"
+  force_destroy = true
 }
+
+resource "aws_s3_bucket_versioning" "dtc_bucket_versioning" {
+  bucket = aws_s3_bucket.dtc_ingestion_bucket.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "dtc_ingestion_public_access" {
+  bucket = aws_s3_bucket.dtc_ingestion_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "dtc_ingestion_public_read" {
+  bucket = aws_s3_bucket.dtc_ingestion_bucket.id
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.dtc_ingestion_public_access
+  ]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.dtc_ingestion_bucket.arn}/*"
+      }
+    ]
+  })
+}
+
 
 resource "aws_iam_user" "dtc_ingestion_user" {
   name = "dtc-ingestion-user"
