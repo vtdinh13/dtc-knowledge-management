@@ -3,13 +3,33 @@ import streamlit as st
 import tiktoken
 import tiktoken.model
 
+SELECTED_MODELS = [
+    "gpt-2",
+    "gpt-3.5",
+    "gpt-3.5-turbo",
+    "gpt-5",
+    "gpt-4",
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-4.1-mini"
+]
 
-def get_tiktoken_models() -> list[str]:
-    return sorted(tiktoken.model.MODEL_TO_ENCODING.keys())
+def get_tiktoken_models(model_filter: list[str]) -> list[str]:
+    all_models = tiktoken.model.MODEL_TO_ENCODING.keys()
 
+    if model_filter is None:
+        return sorted(all_models)
+    
+    sorted_list = sorted(
+        model
+        for model in model_filter
+        if model in tiktoken.model.MODEL_TO_ENCODING
+    )
+
+    return sorted_list
 
 def get_encoding_name(model_name: str) -> str:
-    return tiktoken.model.MODEL_TO_ENCODING[model_name]
+    return tiktoken.encoding_for_model(model_name).name
 
 
 def count_tokens(text: str, model_name: str) -> int:
@@ -24,7 +44,7 @@ def main() -> None:
     )
 
     st.title("Token Calculation")
-    models = get_tiktoken_models()
+    models = get_tiktoken_models(SELECTED_MODELS)
 
     with st.sidebar:
         st.header("Model")
@@ -53,6 +73,7 @@ def main() -> None:
     col3.metric("Characters", f"{character_count:,}")
 
     st.divider()
+
 
     with st.expander("Compare token count across all tiktoken models"):
         if not document_text:
