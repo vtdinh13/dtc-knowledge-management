@@ -1,0 +1,268 @@
+{
+  "title": "Rule-based vs Machine Learning Systems — Spam Detection Case Study",
+  "overview": "Compare traditional rule-based software with a machine learning approach using a spam-detection example. Cover how rule-based logic is designed and maintained, how that logic converts into features for machine learning, the ML training/prediction pipeline, decision thresholding, and practical tradeoffs (maintenance, drift, data collection). Includes concise Python examples for rule encoding, feature extraction, dataset construction, and training a simple classifier.",
+  "key_concepts": [
+    {
+      "title": "Rule-based systems",
+      "description": "Software that encodes explicit conditional logic crafted by engineers or analysts (if/then rules) to produce an outcome. Typical for early solutions to problems with clearly identifiable patterns.",
+      "bullet_points": [
+        "Rules are handcrafted conditions (e.g., if sender == 'promotions@online.com' then spam).",
+        "Quick to implement for simple, stable patterns.",
+        "Becomes hard to maintain as rules grow and patterns change.",
+        "High risk of brittle behavior and frequent unintended side-effects."
+      ]
+    },
+    {
+      "title": "Supervised machine learning",
+      "description": "Learn a mapping from features to outcomes using labeled examples (data + labels). The learned model replaces hand-coded rules and generalizes to unseen examples.",
+      "bullet_points": [
+        "Requires historical labeled data (spam/not spam).",
+        "Relies on feature extraction to convert raw items (emails) into numeric inputs.",
+        "Training (fitting) produces a model; the model is used for prediction on new data.",
+        "Outputs are often probabilities; decisions require a threshold (e.g., 0.5)."
+      ]
+    },
+    {
+      "title": "Feature engineering",
+      "description": "Convert domain knowledge and candidate rules into features the model can use (binary flags, counts, lengths, etc.).",
+      "bullet_points": [
+        "Start with rule-based heuristics to propose features (e.g., contains 'deposit', sender domain).",
+        "Binary features (0/1) are common when deriving features from rules.",
+        "Good features reduce the need for complex models but require iteration and validation."
+      ]
+    },
+    {
+      "title": "Model output and thresholding",
+      "description": "Classifiers typically output a score or probability; the final decision (spam vs not-spam) usually requires a threshold.",
+      "bullet_points": [
+        "Probability expresses model confidence (e.g., 0.8 → 80% likely spam).",
+        "Choosing a threshold trades false positives vs false negatives.",
+        "Threshold selection depends on business priorities (minimize false positives vs block most spam)."
+      ]
+    },
+    {
+      "title": "Operational considerations",
+      "description": "Practical engineering aspects when deploying a spam filter—data collection, labeling, monitoring, and maintenance.",
+      "bullet_points": [
+        "Collect labels via user actions (e.g., 'Mark as spam' button) to build training sets.",
+        "ML models require periodic retraining because spam patterns change (concept drift).",
+        "Human-in-the-loop systems (user feedback) help continuously improve data quality.",
+        "Rule-based parts can serve as features or quick filters in a hybrid system."
+      ]
+    }
+  ],
+  "detailed_explanations": [
+    {
+      "title": "Rule-based spam detection — what it is and why it breaks down",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Definition: manually inspect emails and encode observed patterns as conditional statements in code (if/then). Example patterns: 'sender domain is online.com' or 'subject contains \"tax review\"'."
+        },
+        {
+          "type": "text",
+          "content": "Why this works initially: simple patterns are easy to capture and implement quickly in code. Teams can iterate by adding rules for newly observed spam types."
+        },
+        {
+          "type": "text",
+          "content": "Why it fails at scale: spam evolves, legitimate messages may match spam patterns (false positives), codebase grows with many interdependent rules, and maintenance becomes error-prone."
+        },
+        {
+          "type": "code",
+          "language": "python",
+          "code": "# Minimal rule-based classifier example\n\ndef is_spam_rule_based(email):\n    # email: dict with keys 'sender', 'subject', 'body'\n    sender = email.get('sender', '').lower()\n    subject = email.get('subject', '').lower()\n    body = email.get('body', '').lower()\n\n    # Example rules from analysis\n    if sender == 'promotions@online.com':\n        return True\n    if 'tax review' in subject and sender.endswith('@online.com'):\n        return True\n    if 'deposit' in body:\n        return True\n\n    # Default: not spam\n    return False\n\n# Pitfall: this will mark legitimate emails that contain 'deposit' as spam."
+        }
+      ]
+    },
+    {
+      "title": "Machine learning approach — pipeline and how it differs",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "High-level pipeline: collect labeled emails → extract features → train (fit) a model using features + labels → deploy model to predict labels on new emails. Unlike rule-based systems, the training data (outcomes) are inputs to the training process."
+        },
+        {
+          "type": "mermaid",
+          "diagram": "flowchart LR\n  A[Raw emails + user labels] --> B[Feature extraction]\n  B --> C[Training dataset (X, y)]\n  C --> D[Train ML model]\n  D --> E[Deployed model]\n  F[New incoming emails] --> B2[Feature extraction]\n  B2 --> E\n  E --> G[Predicted probabilities]\n  G --> H{Apply threshold}\n  H -->|above| I[Spam folder]\n  H -->|below| J[Inbox]"
+        },
+        {
+          "type": "text",
+          "content": "Key difference vs rule-based: the model learns a mapping from features to labels from data; when a new pattern appears, the model can generalize if training examples exist, reducing the need to write many special-case rules."
+        }
+      ]
+    },
+    {
+      "title": "Feature extraction — turning rules into inputs",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Features convert raw email fields into numeric/binary inputs. Many good features are derived from existing rule ideas (e.g., 'contains deposit' becomes a binary feature)."
+        },
+        {
+          "type": "text",
+          "content": "Example binary features (each 0/1):\n- subject_long (True if subject length > 10)\n- body_long (True if body length > some threshold)\n- sender_is_promotions (True if sender == promotions@online.com)\n- sender_unusual_format (True if sender's local-part looks scrambled)\n- domain_is_test_com (True if sender domain == test.com)\n- body_contains_deposit (True if 'deposit' in body)"
+        },
+        {
+          "type": "code",
+          "language": "python",
+          "code": "def extract_features(email):\n    s = email.get('subject', '')\n    b = email.get('body', '')\n    sender = email.get('sender', '')\n    local, _, domain = sender.partition('@')\n\n    features = {\n        'subject_long': int(len(s) > 10),\n        'body_long': int(len(b) > 100),\n        'sender_is_promotions': int(sender.lower() == 'promotions@online.com'),\n        'sender_unusual_format': int(not local.isalpha()),  # simplistic heuristic\n        'domain_is_test_com': int(domain.lower() == 'test.com'),\n        'body_contains_deposit': int('deposit' in b.lower())\n    }\n    return features\n\n# Use these feature dicts to build X (matrix) and y (labels) for training."
+        },
+        {
+          "type": "text",
+          "content": "Encoding: binary True/False → 1/0. Build a dataset of rows = emails, columns = features + label (spam=1/not spam=0)."
+        }
+      ]
+    },
+    {
+      "title": "Training, prediction, and decision rules",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Training (fitting) uses the dataset (features X + labels y) and a learning algorithm to produce a model. The model can output a probability that an email is spam. A decision threshold (commonly 0.5) maps probability → class."
+        },
+        {
+          "type": "code",
+          "language": "python",
+          "code": "# Example training + predict workflow using scikit-learn (illustrative)\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\nimport numpy as np\n\n# X: 2D array or DataFrame of features; y: 1D array of labels (0/1)\n# Split, train, and predict probabilities\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\nmodel = LogisticRegression(max_iter=1000)\nmodel.fit(X_train, y_train)\nprobs = model.predict_proba(X_test)[:, 1]  # probability of class=1 (spam)\n\n# Apply threshold\nthreshold = 0.5\npredictions = (probs >= threshold).astype(int)\n\n# Evaluate using appropriate metrics (precision/recall, not shown here)."
+        },
+        {
+          "type": "text",
+          "content": "Choosing threshold: lowering threshold increases recall (catch more spam) but increases false positives; raising threshold reduces false positives but misses more spam. Choose based on user tolerance and business impact."
+        }
+      ]
+    },
+    {
+      "title": "Practical tradeoffs and operational workflow",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Operational points to implement with either approach or hybrid systems:"
+        },
+        {
+          "type": "bullet_list",
+          "items": [
+            "Collect labels from user actions (mark-as-spam) and optionally from manual review to ensure label quality.",
+            "Monitor model performance over time to detect concept drift and trigger retraining.",
+            "Use conservative thresholds or human review for high-risk decisions to reduce false positives.",
+            "Keep a hybrid approach: simple, high-precision rules for glaring cases and ML for nuanced decisions.",
+            "Maintain reproducible training pipelines and version models, features, and thresholds."
+          ]
+        }
+      ]
+    }
+  ],
+  "key_takeaway": [
+    "Rule-based systems are simple to start with but become hard to maintain as patterns change; they are useful for rapid prototyping and deriving features.",
+    "Supervised machine learning uses labeled data and features to learn decision boundaries and generalize to unseen examples — reducing manual rule maintenance.",
+    "Feature engineering often begins with rule-derived heuristics; label collection via user feedback is critical.",
+    "Models output probabilities; choosing the decision threshold is an explicit tradeoff between false positives and false negatives.",
+    "Operationalizing ML requires monitoring, retraining, and high-quality labels — it is not a one-time replacement of rules but often complements them."
+  ],
+  "project_ideas": [
+    "Build a simple spam classifier: collect a small labeled dataset (use synthetic or public email samples), implement the binary features described here, train a logistic regression classifier, and evaluate precision/recall at different thresholds.",
+    "Hybrid filter: implement a production-like pipeline where a small set of high-precision rules short-circuit obvious spam, and an ML model handles the rest. Measure how much load the rules remove from the model.",
+    "Continuous-learning demo: simulate concept drift by changing the distribution of spam over time (introduce new keywords) and implement an automated retrain trigger when performance drops.",
+    "Explainability dashboard: for each flagged email show top contributing features (feature importance or logistic regression coefficients) so users can understand why an email was classified as spam."
+  ],
+  "timestamps": [
+    {
+      "start_time": "0:37",
+      "end_time": "1:55",
+      "concept": "Problem setup — spam detection system and desired behavior (separate spam folder)",
+      "learning_value": "Clarifies the functional requirement: route unsolicited or fraudulent emails to a spam folder; establishes the concrete task that both rule-based and ML solutions must solve.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "UI mockup or slide that shows an email table with an inbox and a spam folder side-by-side (rows representing emails).",
+      "screenshot_reason": "A visual of the inbox/spam folder layout makes the system goal concrete and helps learners map later technical steps (classification) to the user-facing outcome.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Rule-based spam detection — what it is and why it breaks down",
+      "suggested_caption": "Inbox and Spam folder layout: rows of emails routed to folders"
+    },
+    {
+      "start_time": "2:23",
+      "end_time": "3:28",
+      "concept": "Example hand-crafted rules derived from data analysis",
+      "learning_value": "Shows how analysts translate repeated patterns in data (sender domain, subject phrases) into explicit rules — the natural starting point for both rules and feature design.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Slide or code snippet listing concrete rules such as 'if sender == promotions@online.com → spam' and 'if \"tax review\" in subject and sender domain is online.com → spam'.",
+      "screenshot_reason": "Capturing these concrete rules helps learners see how domain observations map to conditional logic and later to binary features.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Rule-based spam detection — what it is and why it breaks down",
+      "suggested_caption": "Concrete rules extracted from observed spam patterns"
+    },
+    {
+      "start_time": "4:58",
+      "end_time": "6:12",
+      "concept": "Rule maintenance problem illustrated by 'deposit' false positive example",
+      "learning_value": "Demonstrates a realistic failure mode: rules that initially catch spam later block legitimate emails, illustrating why rule-only solutions are brittle.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Example email where a legitimate user message contains the word 'deposit' and would be misclassified by a naive 'contains deposit' rule.",
+      "screenshot_reason": "A concrete email example visually communicates how a simple rule can generate false positives and motivates the need for better approaches.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Rule-based spam detection — what it is and why it breaks down",
+      "suggested_caption": "Legitimate email containing 'deposit' that would be misclassified by a naive rule"
+    },
+    {
+      "start_time": "6:36",
+      "end_time": "7:07",
+      "concept": "Machine learning pipeline overview: data → features → train → model → predict",
+      "learning_value": "Summarizes the ML workflow and contrasts it with rule-based systems: labels become inputs to training and the model becomes the runtime decision component.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Diagram of the ML pipeline showing raw emails + labels → feature extraction → training → model → predictions on new emails.",
+      "screenshot_reason": "A clear pipeline diagram is an essential reference that learners will use to connect data collection, feature engineering, and deployment steps.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Machine learning approach — pipeline and how it differs",
+      "suggested_caption": "ML pipeline: from labeled emails to deployed model"
+    },
+    {
+      "start_time": "7:15",
+      "end_time": "8:15",
+      "concept": "Label collection — using user 'mark as spam' actions",
+      "learning_value": "Explains the practical source of labeled data and why user feedback matters for supervised learning.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "UI element of a 'Mark as spam' button or a spam folder containing user-marked emails.",
+      "screenshot_reason": "Shows where labels come from in practice; visualizing the UI encourages learners to think about label quality and biases introduced by user behavior.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Machine learning approach — pipeline and how it differs",
+      "suggested_caption": "User 'Mark as spam' button as label source"
+    },
+    {
+      "start_time": "8:55",
+      "end_time": "11:15",
+      "concept": "Feature extraction and binary feature encoding",
+      "learning_value": "Walks through how concrete rule checks are converted into binary features and shows an example of encoding one email into a feature vector plus the target label.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Table showing a single email converted into feature columns (subject_long, body_long, sender_is_promotions, sender_unusual_format, domain_is_test_com, body_contains_deposit) with 1/0 values and the target label.",
+      "screenshot_reason": "A table mapping an email to a numeric feature vector is crucial for learners to internalize how raw inputs become model-ready data.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Feature extraction — turning rules into inputs",
+      "suggested_caption": "Feature vector for one email (binary features + label)"
+    },
+    {
+      "start_time": "11:36",
+      "end_time": "12:04",
+      "concept": "Training (fitting) the model from features and labels",
+      "learning_value": "Explains the core supervised learning step: given X (features) and y (labels), the algorithm produces a model that maps features to predicted probabilities.",
+      "screenshot_recommended": false,
+      "visual_to_capture": "N/A",
+      "screenshot_reason": "This segment explains an abstract process; key visuals are already captured in the ML pipeline diagram.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Training, prediction, and decision rules",
+      "suggested_caption": ""
+    },
+    {
+      "start_time": "12:23",
+      "end_time": "14:18",
+      "concept": "Model outputs probabilities and decision thresholding",
+      "learning_value": "Demonstrates that classifiers typically return probabilities (e.g., 0.8, 0.6, 0.1) and that a threshold (commonly 0.5) is applied to decide routing to spam or inbox.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Example list of emails with predicted spam probabilities next to each (e.g., 0.8, 0.6, 0.10) and an indication of applying threshold 0.5 to classify them.",
+      "screenshot_reason": "A table with probabilities + thresholding clarifies how the model's continuous outputs become discrete routing decisions.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Training, prediction, and decision rules",
+      "suggested_caption": "Predicted spam probabilities with threshold-based classification"
+    },
+    {
+      "start_time": "14:24",
+      "end_time": "16:49",
+      "concept": "Contrast diagram and summary: rule-based vs machine learning",
+      "learning_value": "Synthesizes the full comparison: rule-based systems hard-code outcomes in software; ML uses outcomes (labels) as inputs to create models. Useful to decide when to use each approach or combine them.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Side-by-side diagram: left shows 'code (rules) + data -> predictions'; right shows 'labels + data -> train -> model -> predictions'.",
+      "screenshot_reason": "A side-by-side visual succinctly embodies the conceptual difference and is an excellent reference for future design decisions.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Machine learning approach — pipeline and how it differs",
+      "suggested_caption": "Side-by-side comparison: Rule-based (code -> predictions) vs ML (labels + train -> model -> predictions)"
+    }
+  ]
+}

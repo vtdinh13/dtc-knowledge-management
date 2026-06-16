@@ -1,0 +1,223 @@
+{
+  "title": "Model Selection: Train / Validation / Test, multiple comparisons, and final training",
+  "overview": "This lesson explains the model selection step in supervised machine learning: how to split data into training, validation and test sets, why we need both validation and test sets (the multiple-comparison / \"lucky model\" problem), how to run the selection loop across candidate models, and how to produce the final model by retraining on combined data. The notes include the algorithmic workflow, practical recommendations, a compact pseudocode example, and visual diagrams to aid understanding.",
+  "key_concepts": [
+    {
+      "title": "Model selection",
+      "description": "The process of trying multiple candidate models and choosing the one that is expected to perform best on new, unseen data.",
+      "bullet_points": [
+        "Train many different models (different algorithms or hyperparameters).",
+        "Compare their performance using a hold-out validation dataset (not used for training).",
+        "Select the best-performing model on the validation set.",
+        "Use a separate test set to confirm the selection was not due to chance."
+      ]
+    },
+    {
+      "title": "Train / Validation / Test split",
+      "description": "Partitioning the original labeled dataset into three non-overlapping subsets to support unbiased model selection and final evaluation.",
+      "bullet_points": [
+        "Training set: used to fit model parameters (weights).",
+        "Validation set: used repeatedly during model selection for comparing models and tuning hyperparameters.",
+        "Test set: held out until the very end to get an unbiased estimate of how the selected model will perform in production.",
+        "Split ratios are flexible (common choices: 60/20/20, 70/15/15, etc.)."
+      ]
+    },
+    {
+      "title": "Multiple comparison (\"lucky model\") problem",
+      "description": "When evaluating many models on the same validation set, one model may achieve high validation performance purely by chance.",
+      "bullet_points": [
+        "Randomness in training (initialization, stochastic optimization) or in model structure can produce a model that fits the validation set by luck.",
+        "Selecting the model with the highest validation score without further checks can lead to an over-optimistic estimate.",
+        "A held-out test set is required to verify that the selected model's performance generalizes."
+      ]
+    },
+    {
+      "title": "Final training on combined data",
+      "description": "After model selection and verification on the test set, you can (optionally) retrain the chosen model using both training and validation data to leverage more labeled data for the final production model.",
+      "bullet_points": [
+        "Combining train + validation increases the amount of data used for fitting final model parameters.",
+        "Retrain only after model architecture/hyperparameters are finalized (i.e., after test verification).",
+        "Do not use the test set for training; test remains reserved for final evaluation."
+      ]
+    },
+    {
+      "title": "Practical measures and tradeoffs",
+      "description": "Operational considerations when implementing model selection in practice.",
+      "bullet_points": [
+        "Stratify splits when the target class distribution is imbalanced.",
+        "Use cross-validation for small datasets instead of a single validation split (reduces variance).",
+        "Monitor metrics beyond accuracy: precision/recall, AUC, calibration, depending on problem.",
+        "Be mindful of leaking information from test into training (data leakage)."
+      ]
+    }
+  ],
+  "detailed_explanations": [
+    {
+      "title": "Why mimic future usage (hold-out validation)",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "When you deploy a model you use a model trained on past data to predict on future examples. To estimate how the model will behave after deployment, simulate this by removing a slice of your dataset and treating it as unseen data (validation). Training should only use the remaining portion."
+        },
+        {
+          "type": "bullet_list",
+          "items": [
+            "Split data into 'seen' (train) and 'unseen' (validation) portions.",
+            "Train model only on training set (features X_train, labels y_train).",
+            "Apply trained model to X_val and compare predictions to y_val.",
+            "Metrics computed on validation act as proxies for future performance."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Converting probabilities to predictions and computing metrics",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Many classifiers output probabilities (e.g., probability spam = 0.7). Convert probabilities to class labels using a threshold (often 0.5) to compute discrete metrics like accuracy. Alternatively, evaluate metrics that use probabilities directly (AUC, log-loss) when more informative."
+        },
+        {
+          "type": "bullet_list",
+          "items": [
+            "Probabilities: continuous outputs (e.g., 0.8, 0.6, 0.1).",
+            "Thresholding: label = 1 if prob >= threshold else 0 (default threshold 0.5).",
+            "Classification accuracy = fraction of correct label predictions on validation set.",
+            "When class imbalance exists, prefer precision/recall/F1 over raw accuracy."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Multiple comparisons — the coin flip example (why test set needed)",
+      "blocks": [
+        {
+          "type": "text",
+          "content": "If you evaluate many candidate models on one fixed validation set, purely random models (a coin flip classifier) can sometimes match the validation labels perfectly by chance. This causes false confidence that a model generalizes. The test set is an independent check to detect lucky validation results."
+        },
+        {
+          "type": "bullet_list",
+          "items": [
+            "Example: several random models evaluated on the same 20% validation subset — one may by chance achieve very high accuracy on that subset.",
+            "Selecting the model with highest validation performance risks choosing a 'lucky' model.",
+            "A separate test set guards against this by providing an out-of-selection check."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Standard model selection workflow (six steps)",
+      "blocks": [
+        {
+          "type": "mermaid",
+          "diagram": "flowchart TD\n  A[Full labeled dataset] --> B[Split: Train / Val / Test]\n  B --> C[Train candidate models on Train]\n  C --> D[Evaluate each model on Val]\n  D --> E[Select best model by Val performance]\n  E --> F[Confirm selected model on Test]\n  F --> G{If Test ok?}\n  G -- Yes --> H[Optionally retrain chosen model on Train+Val and deploy]\n  G -- No --> I[Revisit modeling choices / collect more data / change features]"
+        },
+        {
+          "type": "bullet_list",
+          "items": [
+            "1) Split dataset into three non-overlapping parts (Train / Validation / Test).",
+            "2) Train models on the training set only.",
+            "3) Evaluate models on the validation set and compare metrics.",
+            "4) Select the best model based on validation performance.",
+            "5) Evaluate the selected model once on the test set to verify it wasn't lucky.",
+            "6) Optionally retrain the chosen model on Train + Validation, then use that as the production model; test remains reserved for final confirmation."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Pseudocode: implement a simple model selection loop",
+      "blocks": [
+        {
+          "type": "code",
+          "language": "python",
+          "code": "# High-level pseudocode for model selection\n# Assumes candidate_models is a list of initialized model objects\n# split_dataset returns (X_train, y_train, X_val, y_val, X_test, y_test)\nX_train, y_train, X_val, y_val, X_test, y_test = split_dataset(data, ratios=(0.6,0.2,0.2))\nresults = []\nfor model in candidate_models:\n    model.fit(X_train, y_train)            # train only on training set\n    probs = model.predict_proba(X_val)     # or model.predict for deterministic models\n    preds = (probs[:,1] >= 0.5).astype(int)  # threshold at 0.5\n    score = accuracy(y_val, preds)         # or another metric\n    results.append((model, score))\n\n# Select best model by validation score\nbest_model, best_score = max(results, key=lambda x: x[1])\n\n# Confirm with test set\nprobs_test = best_model.predict_proba(X_test)\npreds_test = (probs_test[:,1] >= 0.5).astype(int)\ntest_score = accuracy(y_test, preds_test)\nprint('Validation score:', best_score)\nprint('Test score:', test_score)\n\n# Optional: retrain best model on Train + Val for final deployment\nbest_model.fit(concat(X_train, X_val), concat(y_train, y_val))\n# Save or deploy best_model"
+        }
+      ]
+    },
+    {
+      "title": "Practical recommendations and common pitfalls",
+      "blocks": [
+        {
+          "type": "bullet_list",
+          "items": [
+            "Do not use the test set during model selection or hyperparameter tuning — it must be held out until the final confirmation.",
+            "If your dataset is small, use cross-validation on training data for robust model comparison; still keep a final test set if possible.",
+            "Stratify splits to preserve class proportions across train/val/test for classification problems.",
+            "If you iterate on the validation set repeatedly (multiple rounds of selection), be aware you implicitly tune to validation — consider nested cross-validation or reserving a fresh test set.",
+            "Choose evaluation metrics aligned with business goals (accuracy is not always appropriate).",
+            "Random seeds and reproducibility: set fixed seeds for deterministic splits when you need repeatable experiments."
+          ]
+        }
+      ]
+    }
+  ],
+  "key_takeaway": [
+    "Always split your labeled data into at least three parts: train, validation, and test.",
+    "Use the validation set to compare and select models; use the test set only once to confirm the selection.",
+    "Multiple candidate evaluations can produce a 'lucky' model—the test set guards against this risk.",
+    "After selection and test verification, you can retrain the final model on train+validation to maximize training data before deployment."
+  ],
+  "project_ideas": [
+    "Implement a model-selection pipeline that compares several classifiers and reports validation/test metrics; include stratified splits and optional retraining on train+val.",
+    "Create an experiment to demonstrate the multiple-comparison problem: evaluate many random classifiers on the same validation split and show variance in validation vs test performance.",
+    "Build a small toolkit that automates train/validation/test splitting, metric calculation, and final retraining, with configuration for split ratios and random seeds."
+  ],
+  "timestamps": [
+    {
+      "start_time": "2:41",
+      "end_time": "3:19",
+      "concept": "Hold-out validation: hide a portion of data to simulate future unseen data",
+      "learning_value": "Shows the core idea of treating part of your dataset as if it were future data, explaining why only the remaining data is used for training.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Instructor's diagram showing the dataset with a 20% slice removed and labeled as 'validation' while the remaining 80% is used for training.",
+      "screenshot_reason": "The visual makes the concept of 'hiding' a validation subset concrete and helps learners internalize the mimicry of future, unseen data.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Why mimic future usage (hold-out validation)",
+      "suggested_caption": "Dataset split: 80% used for training, 20% held out as validation (simulates future unseen data)."
+    },
+    {
+      "start_time": "5:09",
+      "end_time": "6:16",
+      "concept": "Probability outputs → thresholded predictions → computing accuracy",
+      "learning_value": "Demonstrates converting model probability outputs into class predictions and comparing them to true labels to compute accuracy.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "The table/blackboard with a column of model probabilities (e.g., 0.8, 0.7, 0.6, 0.1, 0.9) paired with the actual target labels and the derived binary predictions after thresholding.",
+      "screenshot_reason": "A concrete worked example that connects continuous probability outputs to binary predictions clarifies how thresholding affects the metric computation.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Converting probabilities to predictions and computing metrics",
+      "suggested_caption": "Worked example: probabilities, thresholded predictions, and comparison with actual labels (used to compute accuracy)."
+    },
+    {
+      "start_time": "8:22",
+      "end_time": "11:14",
+      "concept": "Multiple comparisons and the 'lucky model' demonstration (coin flip example)",
+      "learning_value": "Illustrates how evaluating many candidate models on the same validation set can produce a spurious best model due to chance.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "The drawn sequence of validation labels and multiple coin-flip model prediction sequences, highlighting the single sequence that accidentally matches perfectly.",
+      "screenshot_reason": "Visibly comparing several random prediction sequences against the true labels highlights the randomness issue and why a lucky match can mislead model selection.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Multiple comparisons — the coin flip example (why test set needed)",
+      "suggested_caption": "Multiple random classifiers evaluated on one validation set; one gets lucky and matches labels perfectly."
+    },
+    {
+      "start_time": "13:20",
+      "end_time": "15:08",
+      "concept": "Three-way split and the role of the test set",
+      "learning_value": "Explains how the test set is used after model selection on the validation set to verify the selected model wasn't lucky.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Diagram showing three non-overlapping subsets: Train (60%), Validation (20%), Test (20%), and the flow: train -> validate -> select -> test.",
+      "screenshot_reason": "A compact diagram that clarifies the purpose of each subset and the order of operations in model selection; it reinforces the test set's role as an independent verifier.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Standard model selection workflow (six steps)",
+      "suggested_caption": "Train / Validation / Test split and the selection -> test verification flow."
+    },
+    {
+      "start_time": "19:54",
+      "end_time": "20:19",
+      "concept": "Retraining final model on combined Train + Validation",
+      "learning_value": "Shows how to reuse the validation data for final training after model architecture and hyperparameters are finalized and test verification is complete.",
+      "screenshot_recommended": true,
+      "visual_to_capture": "Visual where the training and validation blocks are merged into a single larger training block, then the final model is trained on this combined data and applied to the test set.",
+      "screenshot_reason": "Captures the common final step of retraining on more data for deployment and prevents learners from thinking the validation data must be permanently discarded.",
+      "suggested_notes_location": "Detailed Explanations and Examples > Final training on combined data",
+      "suggested_caption": "Combine Training + Validation to retrain the final model before deployment (after test verification)."
+    }
+  ]
+}
