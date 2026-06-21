@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from download_videos import download_one_video, write_jsonl_log
-from utils import screenshots_in_range
+from utils import screenshots_in_range, load_completed_video_ids
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,13 @@ def process_timestamps(llm_output_input:str):
 
     return timestamps_list
 
-def take_screenshots(llm_output_dir:str, ss_output_dir:str):
+def take_screenshots(llm_output_dir:str, ss_output_dir:str, log_path: str = "screenshotting_log.jsonl"):
     
     # 0. Specify paths
     llm_output_path = Path(llm_output_dir)
     
-    # 1. grab LLM output
+    # 1. prepare LLM output and videos to download
+    completed_video_ids = load_completed_video_ids(log_path)
     v_path_list = sorted([p.name for p in llm_output_path.iterdir() if p.suffix == ".json"])
 
     logger.info("Found %s LLM output JSON files in %s", len(v_path_list), llm_output_dir)
@@ -61,6 +62,15 @@ def take_screenshots(llm_output_dir:str, ss_output_dir:str):
         # 2.0 - grab video id
         match = re.match(r"^llm_response_(.+)\.json$", llm_output)
         video_id = match.group(1)
+
+        if video_id in completed_video_ids:
+            logger.info("Skipping %s because screenshots already completed", video_id)
+
+            write_jsonl_log(log_path, {
+                "event": "video_skipped",
+                "video_id": video_id,
+                "reason": "already_completed",
+            })
 
         # 2.1 - download one video
         try:
@@ -117,7 +127,7 @@ def take_screenshots(llm_output_dir:str, ss_output_dir:str):
             logger.info("Deleted video %s after successful screenshots", video_path)
 
             write_jsonl_log("screenshotting_log.jsonl", {
-                "event": "video_deleted",
+                "event": "screenshots_complete",
                 "video_id": video_id,
                 "video_path": str(video_path_obj),
                 "screenshot_count": len(all_screenshot_paths),

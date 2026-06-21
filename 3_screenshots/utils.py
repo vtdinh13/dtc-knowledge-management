@@ -1,6 +1,26 @@
 import ffmpeg
+import json
 from pathlib import Path
 
+def load_completed_video_ids(log_path):
+    log_path = Path(log_path)
+
+    if not log_path.exists():
+        return set()
+
+    completed = set()
+
+    with log_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+
+            event = json.loads(line)
+
+            if event.get("event") == "screenshots_complete":
+                completed.add(event["video_id"])
+
+    return completed
 
 def time_to_seconds(t: str) -> float:
     """
@@ -29,17 +49,20 @@ def seconds_to_timestamp(seconds: float) -> str:
 
 
 def screenshots_in_range(
-    video_path: str,
+    video_path_input: str,
+    video_id: str,
     start_time: str,
     end_time: str,
     interval_seconds: int,
-    output_dir: str,
+    output_dir_input: str,
 ) -> list[str]:
     """
     Take screenshots every interval_seconds between start_time and end_time.
     """
 
-    output_dir = Path(output_dir)
+    video_path = Path(video_path_input)
+
+    output_dir = Path(output_dir_input)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     start = time_to_seconds(start_time)
@@ -54,16 +77,24 @@ def screenshots_in_range(
     while current <= end:
         timestamp = seconds_to_timestamp(current)
         safe_name = timestamp.replace(":", "-").replace(".", "_")
-        output_path = output_dir / f"screenshot_{safe_name}.png"
+        output_path = output_dir / f"ss_{video_id}_{safe_name}.png"
 
-        (
-            ffmpeg
-            .input(video_path, ss=timestamp)
-            .output(str(output_path), vframes=1)
-            .overwrite_output()
-            .run(quiet=True)
-        )
+        try:
+            (
+                ffmpeg
+                .input(Path(video_path), ss=timestamp)
+                .output(str(output_path), vframes=1)
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True)
+            )
+        except ffmpeg.Error as e:
+            print("FFmpeg stdout:")
+            print(e.stdout.decode("utf-8", errors="replace") if e.stdout else "")
 
+            print("FFmpeg stderr:")
+            print(e.stderr.decode("utf-8", errors="replace") if e.stderr else "")
+
+            raise
         output_paths.append(str(output_path))
         current += interval_seconds
 
